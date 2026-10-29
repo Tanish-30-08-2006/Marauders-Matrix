@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matrix · Tele-ICU</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top" id="top"></header>
+<main>
+  <section class="zone red"><h2>Critical · highest risk first</h2><div class="row" id="red"></div></section>
+  <section class="zone amb"><h2>Watch · getting worse, no alarm yet</h2><div class="row" id="amb"></div></section>
+  <section><h2 style="font-size:13px;font-weight:600;color:var(--mut);margin:0 0 8px" id="sh"></h2><div class="sgrid" id="stable"></div></section>
+</main>\n<div class="dim" id="dim"></div><aside class="drawer" id="dr" aria-label="Triage queue"></aside>
+<div class="demo">
+  <button class="btn pri" id="sim">Simulate new red alert</button>
+  <button class="btn" id="tq">Triage queue</button>\n  <button class="btn ghost" id="rst">Reset demo</button>
+</div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+// Only red and amber tiles move. Stable tiles keep their place so nobody loses their spot.
+const last_sim = get_state().sim.slice(-1)[0];
+
+function alert_tile(p) {
+  const tag = p.isNew ? `<span class="tag">NEW</span>` : p.acked ? `<span class="tag ok">Acknowledged</span>` : "";
+  const trend = p.improving ? "↗ improving" : p.band === "red" ? "↘ worsening" : "↘ drifting down";
+  const wait = p.band === "red" ? `${p.acked ? "Open for" : "Waiting"} ${fmt_wait(p.alertMin)}` : trend;
+  return `<a class="tile ${p.band === "red" ? "red" : "amb"} ${p.id === last_sim ? "fresh" : ""}" href="detail.html?id=${p.id}">
+    ${tag}
+    <div class="t1"><b>${p.id}</b><span>${p.age}${p.sex}</span></div>
+    <div class="risk num">${p.risk}%<span class="rlab"> risk</span></div>
+    <div class="bar"><i style="width:${p.risk}%"></i></div>
+    <div class="chips">${p.trig.map((t) => `<span class="chip num">${t}</span>`).join("") || `<span class="chip">${trend}</span>`}</div>
+    <div class="t3"><span class="num">${p.band === "red" ? wait : trend}</span>${spark(p.series.spo2)}</div>
+  </a>`;
+}
+
+function mini(p) {
+  if (p.band === "nosig")
+    return `<a class="mini ns" href="detail.html?id=${p.id}"><b>${p.id}</b><span>No signal</span><small class="num">Last data ${p.lastSeen}s ago · ${p.was === "amber" ? "was on watch" : "was stable"}</small></a>`;
+  return `<a class="mini" href="detail.html?id=${p.id}"><b>${p.id}</b>${p.suppressed ? `<span class="fa" title="A sensor glitch was filtered out">filtered</span>` : ""}${spark(p.series.hr)}<span class="ok">✓</span></a>`;
+}
+
+function draw() {
+  const all = patients(), reds = all.filter((p) => p.band === "red").sort(rank);
+  document.getElementById("red").innerHTML = reds.map(alert_tile).join("") || `<div class="empty">No critical patients right now.</div>`;
+  document.getElementById("amb").innerHTML = all.filter((p) => p.band === "amber").sort((a, b) => b.risk - a.risk).map(alert_tile).join("") || `<div class="empty">Nobody is trending down.</div>`;
+  const st = all.filter((p) => p.band === "stable" || p.band === "nosig");
+  document.getElementById("sh").textContent = `Stable · ${st.length} patients`;
+  document.getElementById("stable").innerHTML = st.map(mini).join("");
+  top_bar("matrix.html");
+}
+
+document.getElementById("sim").onclick = () => {
+  const s = get_state(), pick = patients().find((p) => p.band === "stable" && !p.suppressed && p.state === "stable");
+  if (!pick) return;
+  s.sim.push(pick.id); set_state(s); draw(); play_tone();
+  const t = Object.assign(document.createElement("div"), { className: "toast", textContent: `${pick.id} moved to Critical` });
+  document.body.append(t); setTimeout(() => t.remove(), 3500);
+};
+document.getElementById("rst").onclick = reset_demo;
+let sortby = "risk";
+function drawer() {
+  const all = patients().filter((p) => p.band === "red" || p.band === "amber");
+  const rk = sortby === "risk" ? (a, b) => (a.band === b.band ? rank(a, b) : a.band === "red" ? -1 : 1) : (a, b) => b.alertMin - a.alertMin;
+  const rows = all.sort(rk).map((p, i) => `<div class="qr ${p.band === "red" && !p.acked ? "un" : ""}"><span class="qn num">${i + 1}</span>
+    <div class="qm"><b>${p.id}</b> <small>${p.name}</small><div class="chips ${p.band === "red" ? "red" : "amb"}">${p.trig.map((t) => `<span class="chip num">${t}</span>`).join("")}</div></div>
+    <div class="qs"><div class="risk num ${p.band === "red" ? "rd" : "am"}">${p.risk}%</div><small class="num">${p.band === "red" ? fmt_wait(p.alertMin) : "watching"}</small></div>
+    <div class="qb"><a class="btn" href="detail.html?id=${p.id}">Open</a>${p.band === "red" && !p.acked ? `<button class="btn pri" data-id="${p.id}">Acknowledge</button>` : `<small>${p.acked ? "Acknowledged" : ""}</small>`}</div></div>`).join("");
+  document.getElementById("dr").innerHTML = `<div class="dh"><b>Triage queue · ${all.length} to review</b><button class="btn ghost" id="dx" aria-label="Close">✕</button></div>
+    <div class="dsort">Sort by <button class="btn ${sortby === "risk" ? "pri" : ""}" data-s="risk">Risk</button><button class="btn ${sortby === "wait" ? "pri" : ""}" data-s="wait">Time waiting</button></div>
+    <div class="dl">${rows || `<div class="empty">No active alerts. Nothing needs review.</div>`}</div>`;
+  const d = document.getElementById("dr");
+  d.querySelector("#dx").onclick = close_q;
+  d.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => { sortby = b.dataset.s; drawer(); }));
+  d.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => { const s = get_state(); s.acked.push(b.dataset.id); set_state(s); draw(); drawer(); }));
+}
+const open_q = () => { drawer(); document.body.classList.add("q"); };
+const close_q = () => { document.body.classList.remove("q"); history.replaceState(null, "", "matrix.html"); };
+document.getElementById("tq").onclick = open_q;
+document.getElementById("dim").onclick = close_q;
+addEventListener("keydown", (e) => e.key === "Escape" && close_q());
+draw();
+if (location.hash === "#triage") open_q();
+</script>
+</body>
+</html>
