@@ -1,0 +1,37 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"><title>Trends · Tele-ICU</title></head><body>
+<header class="top" id="top"></header>
+<div class="dhead"><a class="btn ghost" id="bk">‹ Back to patient</a><h1 id="ti"></h1><span class="sub">Trends and history</span><span class="sp"></span><div class="seg" id="seg"></div></div>
+<div class="tw"><div id="ch"></div><div class="card" style="align-self:start"><h3>Changes vs 6 hours ago</h3><table><thead><tr><th>Vital</th><th>Now</th><th>Change</th></tr></thead><tbody id="tb"></tbody></table><p style="color:var(--mut);font-size:12px;margin:10px 0 0">Temp and lactate are demo values.</p></div></div>
+<script src="data.js"></script><script src="app.js"></script>
+<script>
+// Charts are drawn from baked data. Nothing is fetched or generated at load.
+const id = new URLSearchParams(location.search).get("id") || "H1-B12", p = by_id(id), V = { hr: ["HR", 40, 160, null], spo2: ["SpO₂", 80, 100, 90], map: ["MAP", 40, 120, 65], rr: ["RR", 5, 35, null] };
+const worse = { spo2: (d) => d <= -3, hr: (d) => d >= 15, map: (d) => d <= -10, rr: (d) => d >= 4 };
+let range = 24;
+function pts(v) {
+  const s = p.series[v];
+  if (range === 1) return Array.from({ length: 12 }, (_, i) => s[70] + ((s[71] - s[70]) * i) / 11); // demo: last hour interpolated
+  return s.slice(-(range + 1));
+}
+function chart(v) {
+  const [lab, lo, hi, thr] = V[v], d = pts(v), n = d.length, W = 760, H = 130;
+  const x = (i) => (i / (n - 1)) * W, y = (a) => H - 8 - ((Math.min(hi, Math.max(lo, a)) - lo) / (hi - lo)) * (H - 16);
+  const dr = drift(p, v), flag = !!dr, hrs = dr ? Math.min(dr.hrs, range) : 0, bx = W * (1 - hrs / range);
+  const band = flag ? `<rect x="${bx}" y="0" width="${W - bx}" height="${H}" fill="rgba(244,190,90,.13)"/><text x="${bx + 8}" y="16" fill="#f4be5a" font-size="12">${v === "spo2" || v === "map" ? "Downward" : "Upward"} trend detected ${hrs}h ago</text>` : "";
+  const line = thr ? `<line x1="0" x2="${W}" y1="${y(thr)}" y2="${y(thr)}" stroke="#d9606a" stroke-dasharray="4 4" opacity=".7"/>` : "";
+  return `<div class="ch"><div class="hd"><b>${lab}</b><span class="num" id="rd_${v}">Now ${p.cur[v]}</span></div>
+   <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-v="${v}" data-n="${n}">${band}${line}<polyline fill="none" stroke="#7ab4f5" stroke-width="2.2" vector-effect="non-scaling-stroke" points="${d.map((a, i) => x(i) + "," + y(a)).join(" ")}"/></svg>
+   <div class="hd"><span>${range}h ago</span><span>Now</span></div></div>`;
+}
+function draw() {
+  document.getElementById("ch").innerHTML = Object.keys(V).map(chart).join("");
+  document.querySelectorAll("svg[data-v]").forEach((s) => (s.onmousemove = (e) => { const r = s.getBoundingClientRect(), v = s.dataset.v, d = pts(v), i = Math.round(((e.clientX - r.left) / r.width) * (d.length - 1));
+    document.getElementById("rd_" + v).textContent = (i === d.length - 1 ? "Now " : Math.round((d.length - 1 - i) * range / (d.length - 1)) + "h ago ") + Math.round(d[i]); }));
+  document.getElementById("seg").innerHTML = [1, 6, 24, 72].map((r) => `<button class="btn ${r === range ? "on" : ""}" data-r="${r}">${r}h</button>`).join("");
+  document.querySelectorAll("[data-r]").forEach((b) => (b.onclick = () => { range = +b.dataset.r; draw(); }));
+  const red = p.band === "red", row = (n, now, dl, bd) => `<tr><td>${n}</td><td class="num">${now}</td><td class="num" style="color:var(--${bd ? "red" : "mut"})">${dl}</td></tr>`;
+  document.getElementById("tb").innerHTML = Object.keys(V).map((v) => { const d = Math.round(p.cur[v] - p.series[v][65]); return row(V[v][0], p.cur[v], (d > 0 ? "↑ " : d < 0 ? "↓ " : "– ") + Math.abs(d), worse[v](d)); }).join("") + row("Temp °C", p.temp, red ? "↑ 0.6" : "– 0.0", red) + row("Lactate", red ? 4.2 : 1.1, red ? "↑ 1.4" : "– 0.0", red);
+}
+document.getElementById("ti").textContent = p.id; document.getElementById("bk").href = "detail.html?id=" + id;
+top_bar("matrix.html"); draw();
+</script></body></html>
