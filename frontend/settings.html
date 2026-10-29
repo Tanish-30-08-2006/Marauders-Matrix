@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"><title>Alert settings · Tele-ICU</title></head><body>
+<header class="top" id="top"></header>
+<div class="tabs" id="tabs"></div><div class="sw" id="sw"></div>
+<script src="data.js"></script><script src="app.js"></script>
+<script>
+const BASE = [["14:32", "H1-B12", "SpO₂ below 88", "Sensor off or loose", "Nurse Lakshmi Reddy"], ["13:15", "H2-B23", "MAP below 60", "Routine care", "Filtered by system"], ["12:45", "H3-B07", "SpO₂ below 85", "Patient movement", "Dr. Arjun Sharma"],
+  ["11:30", "H4-B02", "RR above 45", "Other", "Dr. Meera Iyer"], ["11:12", "H1-B04", "SpO₂ below 90", "Routine care", "Nurse Kavya Menon"], ["10:05", "H2-B15", "SBP above 160", "Sensor off or loose", "Filtered by system"],
+  ["09:42", "H3-B11", "HR above 130", "Patient movement", "Nurse Rohan Das"], ["09:15", "H1-B12", "SpO₂ below 88", "Sensor off or loose", "Nurse Lakshmi Reddy"], ["08:30", "H4-B19", "MAP below 60", "Routine care", "Dr. Arjun Sharma"],
+  ["07:45", "H2-B09", "RR below 8", "Sensor off or loose", "Filtered by system"], ["07:10", "H3-B03", "SpO₂ below 85", "Patient movement", "Nurse Kiran Patel"]];
+let tab = "Log", spo = 88, per = 30, vol = 60;
+function draw() {
+  const s = get_state(), mine = s.fa.map((f) => [f.t, f.id, "Alert", f.reason, "Dr. Meera Iyer"]), rows = [...mine.reverse(), ...BASE];
+  document.getElementById("tabs").innerHTML = ["Log", "Sensitivity", "Sound"].map((t) => `<button class="${t === tab ? "on" : ""}">${t}</button>`).join("");
+  document.querySelectorAll("#tabs button").forEach((b) => (b.onclick = () => { tab = b.textContent; draw(); }));
+  const w = document.getElementById("sw");
+  if (tab === "Log") w.innerHTML = `<div class="card"><p style="margin:0 0 10px;color:var(--mut)">${rows.length} alerts filtered out or dismissed this shift</p><table><thead><tr><th>Time</th><th>Bed</th><th>Vital</th><th>Reason</th><th>Reviewed by</th></tr></thead><tbody>${rows.map((r) => "<tr>" + r.map((c, i) => `<td class="${i < 2 ? "num" : ""}">${c}</td>`).join("") + "</tr>").join("")}</tbody></table></div>
+    <div class="card" style="align-self:start"><h3>Why this matters</h3><p style="color:var(--mut);margin:0">Filtered alarms stay here so nothing is hidden for good. Change the thresholds in the Sensitivity tab.</p></div>`;
+  if (tab === "Sensitivity") { const cut = Math.max(0, Math.round(11 + (per - 30) / 6 - (spo - 88) * 2)); // demo estimate, not a real model
+    w.innerHTML = `<div class="card"><div class="row2"><div class="l"><b>SpO₂ alert level</b><span class="num" id="a">${spo}%</span></div><input type="range" id="r1" min="80" max="95" value="${spo}"></div>
+    <div class="row2"><div class="l"><b>Wait before sounding an alert</b><span class="num" id="b">${per} sec</span></div><input type="range" id="r2" min="5" max="300" value="${per}"><div class="note">${per > 120 ? "Waiting over 2 minutes can delay a real alert." : ""}</div></div>
+    <p style="margin:0;color:var(--grn)">This setting would have cut about ${cut} alarms today.</p></div>`;
+    document.getElementById("r1").oninput = (e) => { spo = +e.target.value; draw(); }; document.getElementById("r2").oninput = (e) => { per = +e.target.value; draw(); }; }
+  if (tab === "Sound") { w.innerHTML = `<div class="card"><div class="row2"><b>Critical tone</b><button class="btn" id="p1">▶ Play (two tones, low to high)</button></div><div class="row2"><b>Watch tone</b><button class="btn" id="p2">▶ Play (one soft tone)</button></div>
+    <div class="row2"><div class="l"><b>Volume</b><span class="num" id="v">${vol}%</span></div><input type="range" id="r3" min="0" max="100" value="${vol}"></div></div>`;
+    document.getElementById("p1").onclick = () => play_tone([520, 740], vol / 800); document.getElementById("p2").onclick = () => play_tone([440], vol / 1200);
+    document.getElementById("r3").oninput = (e) => { vol = +e.target.value; document.getElementById("v").textContent = vol + "%"; }; }
+}
+top_bar("settings.html"); draw();
+</script></body></html>
