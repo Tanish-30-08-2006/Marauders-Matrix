@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"><title>Patient · Tele-ICU</title></head><body>
+<header class="top" id="top"></header>
+<div id="pg"></div>
+<script src="data.js"></script><script src="app.js"></script>
+<script>
+// Single-screen answer to "is this patient actually in danger?"
+const id = new URLSearchParams(location.search).get("id") || "H1-B12", p = by_id(id);
+const N = { hr: "HR", spo2: "SpO₂", map: "MAP", rr: "RR" }, U = { hr: "bpm", spo2: "%", map: "mmHg", rr: "br/min" };
+const bad = { spo2: (d) => d <= -3, hr: (d) => d >= 15, map: (d) => d <= -10, rr: (d) => d >= 4 };
+function why() {
+  if (p.band === "nosig") return [`No data from this bed for ${p.lastSeen} seconds. Check the monitor and the sensor.`];
+  const l = Object.keys(N).map((v) => [v, drift(p, v)]).filter(([, x]) => x).map(([v, x]) => `${N[v]} went from ${x.from} to ${p.cur[v]} over the last ${x.hrs} hour${x.hrs > 1 ? "s" : ""}.`);
+  if (p.suppressed) l.push("A sensor glitch was filtered out earlier. It was marked as a false alarm.");
+  return l.length ? l : ["Nothing needs action. All vitals are steady."];
+}
+function order() { const a = all_patients(), r = a.filter((x) => x.band === "red").sort(rank), m = a.filter((x) => x.band === "amber").sort((x, y) => y.risk - x.risk); return [...r, ...m, ...a.filter((x) => !r.includes(x) && !m.includes(x))].map((x) => x.id); }
+function draw() {
+  const q = by_id(id), o = order(), i = o.indexOf(id), cls = q.band === "red" ? "red" : q.band === "amber" ? "amb" : "grn";
+  const card = (v) => { const hot = q.trig.some((t) => t.startsWith(N[v])), sub = v === "map" ? `<small class="num">${q.sbp}/${q.dbp}</small>` : "";
+    return `<div class="card v ${hot ? "hot" : ""}"><div><b>${N[v]}</b> <small>${U[v]}</small></div><div class="rw"><div><span class="big num">${q.cur[v]}</span> ${sub}</div>${spark(q.series[v])}</div></div>`; };
+  document.getElementById("pg").innerHTML = `
+  <div class="dhead"><a class="btn ghost" href="matrix.html">‹ Back to Matrix</a><div><h1>${q.id}</h1></div>
+    <div><b>${q.name}</b><div class="sub">${q.age}${q.sex} · ${q.dx}</div></div><span class="sp"></span>
+    <a class="btn" href="trends.html?id=${q.id}">View trends</a>
+    <a class="btn" href="detail.html?id=${o[(i + o.length - 1) % o.length]}" aria-label="Previous patient">‹</a><a class="btn" href="detail.html?id=${o[(i + 1) % o.length]}" aria-label="Next patient">›</a>
+    <div class="rbox ${cls}"><small>Deterioration risk</small><b class="num">${q.risk == null ? "–" : q.risk + "%"}</b></div></div>
+  <div class="cols"><div class="card"><h3>Active clinical alerts</h3><ul>${why().map((t) => `<li>${t}</li>`).join("")}</ul></div>
+    <div class="vit">${["hr", "spo2", "map", "rr"].map(card).join("")}</div>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="card"><h3>Bedside contact</h3><div>Nurse <b>${q.nurse}</b></div><div class="sub" style="color:var(--mut)">Ext <span class="num">${q.ext}</span></div></div>
+      <div class="card"><h3>Recent interventions</h3><div class="iv">${q.iv.map((t, k) => `<div><span class="num">${["11:05", "10:30", "09:15"][k]}</span>${t}</div>`).join("")}</div></div>
+      <div class="card"><h3>Your notes</h3><textarea class="nt" id="nt" placeholder="Write what you noticed or decided."></textarea><button class="btn" id="sv" style="margin-top:8px">Save note</button></div></div></div>
+  <div class="bar2"><button class="btn pri" id="ak" ${q.acked || q.band !== "red" ? "disabled" : ""}>${q.acked ? "Acknowledged" : "Acknowledge"}</button><button class="btn" id="cb">Call bedside</button><button class="btn warn" id="es">Escalate</button><button class="btn" id="fa">Mark false alarm</button></div>`;
+  const nt = document.getElementById("nt"); nt.value = localStorage.getItem("note_" + id) || "";
+  document.getElementById("sv").onclick = (e) => { localStorage.setItem("note_" + id, nt.value); e.target.textContent = "Saved ✓"; setTimeout(() => (e.target.textContent = "Save note"), 1500); };
+  document.getElementById("ak").onclick = () => { const s = get_state(); s.acked.push(id); set_state(s); draw(); top_bar("matrix.html"); };
+  document.getElementById("cb").onclick = () => open_action("call", q, draw);
+  document.getElementById("es").onclick = () => open_action("esc", q, draw);
+  document.getElementById("fa").onclick = () => open_action("fa", q, () => { draw(); top_bar("matrix.html"); });
+}
+top_bar("matrix.html"); draw();
+if (new URLSearchParams(location.search).get("modal") === "fa") open_action("fa", p, () => draw());
+</script></body></html>
