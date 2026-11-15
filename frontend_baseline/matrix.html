@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matrix · Tele-ICU</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top" id="top"></header>
+<main>
+  <!-- [BASELINE] one flat grid in bed-ID order. No Critical / Watch / Stable zones. -->
+  <div class="sgrid" id="grid"></div>
+</main>\n<div class="dim" id="dim"></div><aside class="drawer" id="dr" aria-label="Triage queue"></aside>
+<div class="demo">
+  <button class="btn pri" id="sim">Simulate new red alert</button>
+  <button class="btn" id="tq">Triage queue</button>\n  <button class="btn ghost" id="rst">Reset demo</button>
+</div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+// [BASELINE] one tile for everybody: same two readings, no risk, no chip, no colour.
+function cell(p) {
+  if (p.band === "nosig") return `<a class="cell" href="detail.html?id=${p.id}"><div class="t1"><b>${p.id}</b></div><small>No signal</small></a>`;
+  const alarm = p.band === "red" || p.band === "amber"; // band only decides who gets the ALARM badge
+  return `<a class="cell" href="detail.html?id=${p.id}"><div class="t1"><b>${p.id}</b>${alarm ? `<span class="al">${p.acked ? "ACK" : "ALARM"}</span>` : `<small>${p.age}${p.sex}</small>`}</div><small class="num">HR ${p.cur.hr}</small><small class="num">SpO₂ ${p.cur.spo2}</small></a>`;
+}
+
+function draw() {
+  // [BASELINE] no sorting, no zones: tiles stay in bed-ID order, an alarm never moves a tile.
+  document.getElementById("grid").innerHTML = patients().map(cell).join("");
+  top_bar("matrix.html");
+}
+
+document.getElementById("sim").onclick = () => {
+  const s = get_state(), pick = patients().find((p) => p.band === "stable" && !p.suppressed && p.state === "stable");
+  if (!pick) return;
+  s.sim.push(pick.id); set_state(s); draw(); play_tone();
+  const t = Object.assign(document.createElement("div"), { className: "toast", textContent: `Alarm on ${pick.id}` });
+  document.body.append(t); setTimeout(() => t.remove(), 3500);
+};
+document.getElementById("rst").onclick = reset_demo;
+// [BASELINE] alarm list in bed-ID order. No rank, risk, chips, timers or sort buttons.
+function drawer() {
+  const all = patients().filter((p) => p.band === "red" || p.band === "amber");
+  const rows = all.map((p) => `<div class="qr"><div class="qm"><b>${p.id}</b><div><small>${p.name}</small></div></div>
+    <div class="qb"><a class="btn" href="detail.html?id=${p.id}">Open</a>${p.acked ? `<small>Acknowledged</small>` : `<button class="btn" data-id="${p.id}">Acknowledge</button>`}</div></div>`).join("");
+  document.getElementById("dr").innerHTML = `<div class="dh"><b>Alarm list · ${all.length}</b><button class="btn ghost" id="dx" aria-label="Close">✕</button></div>
+    <div class="dl">${rows || `<div class="empty">No alarms.</div>`}</div>`;
+  const d = document.getElementById("dr");
+  d.querySelector("#dx").onclick = close_q;
+  d.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => { const s = get_state(); s.acked.push(b.dataset.id); set_state(s); draw(); drawer(); }));
+}
+const open_q = () => { drawer(); document.body.classList.add("q"); };
+const close_q = () => { document.body.classList.remove("q"); history.replaceState(null, "", "matrix.html"); };
+document.getElementById("tq").onclick = open_q;
+document.getElementById("dim").onclick = close_q;
+addEventListener("keydown", (e) => e.key === "Escape" && close_q());
+draw();
+if (location.hash === "#triage") open_q();
+</script>
+</body>
+</html>
