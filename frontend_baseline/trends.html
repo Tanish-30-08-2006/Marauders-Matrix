@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"><title>Trends · Tele-ICU</title></head><body>
+<header class="top" id="top"></header>
+<div class="dhead"><a class="btn ghost" id="bk">‹ Back to patient</a><h1 id="ti"></h1><span class="sub">Readings</span></div>
+<!-- [BASELINE] no charts, no range buttons, no trend band, no change table: just the last 3 readings. -->
+<div style="max-width:640px;margin:30px auto;padding:0 20px"><div class="card" style="padding:0"><table><thead><tr><th>Time</th><th>HR</th><th>SpO₂</th><th>MAP</th><th>RR</th></tr></thead><tbody id="tb"></tbody></table></div>
+<p style="text-align:center;color:var(--mut)">Showing the last 3 readings.</p></div>
+<script src="data.js"></script><script src="app.js"></script>
+<script>
+const id = new URLSearchParams(location.search).get("id") || "H1-B12", p = by_id(id);
+const rows = [["Now", 71], ["1h ago", 70], ["2h ago", 69]];
+document.getElementById("tb").innerHTML = rows.map(([l, i]) => `<tr><td>${l}</td>${["hr", "spo2", "map", "rr"].map((v) => `<td class="num">${Math.round(p.series[v][i])}</td>`).join("")}</tr>`).join("");
+document.getElementById("ti").textContent = p.id; document.getElementById("bk").href = "detail.html?id=" + id;
+top_bar("matrix.html");
+</script></body></html>
